@@ -27,6 +27,7 @@ type VizId =
   | "pointcloud";
 type Projection = "3D" | "XY" | "XZ" | "YZ";
 type Normalization = "none" | "minmax" | "zscore";
+type CameraPreset = "iso" | "front" | "top" | "side";
 
 interface ColumnSummary {
   name: string;
@@ -79,6 +80,13 @@ interface TransformState {
   opacity: number;
 }
 
+interface DisplayState {
+  showGrid: boolean;
+  showBounds: boolean;
+  showAxisLabels: boolean;
+  cameraPreset: CameraPreset;
+}
+
 const emptyMapping: Mapping = { x: "", y: "", z: "", value: "", group: "", time: "", source: "", target: "" };
 const defaultTransform: TransformState = {
   normalization: "none",
@@ -92,6 +100,13 @@ const defaultTransform: TransformState = {
   pointSize: 1.4,
   lineWidth: 1,
   opacity: 0.92,
+};
+
+const defaultDisplay: DisplayState = {
+  showGrid: true,
+  showBounds: true,
+  showAxisLabels: true,
+  cameraPreset: "iso",
 };
 
 const vizLabels: Record<VizId, string> = {
@@ -444,6 +459,45 @@ function pointTexture() {
   return texture;
 }
 
+function labelSprite(text: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "24px Inter, Arial, sans-serif";
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const texture = new THREE.CanvasTexture(canvas);
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.82, depthTest: false });
+  const sprite = new THREE.Sprite(material);
+  sprite.scale.set(14, 3.5, 1);
+  return sprite;
+}
+
+function addAxisLabels(scene: THREE.Scene, mapping: Mapping, bounds: THREE.Box3, extents: Record<"x" | "y" | "z", [number, number]>, projection: Projection) {
+  const center = bounds.getCenter(new THREE.Vector3());
+  const axisNames = projection === "XY" ? [mapping.x, mapping.y, ""] : projection === "XZ" ? [mapping.x, mapping.z, ""] : projection === "YZ" ? [mapping.y, mapping.z, ""] : [mapping.x, mapping.z, mapping.y];
+  const minX = labelSprite(`${axisNames[0]} ${extents.x[0].toFixed(2)}`);
+  minX.position.set(bounds.min.x, bounds.min.y - 5, center.z);
+  const maxX = labelSprite(`${extents.x[1].toFixed(2)}`);
+  maxX.position.set(bounds.max.x, bounds.min.y - 5, center.z);
+  const minY = labelSprite(`${axisNames[1]} ${extents.z[0].toFixed(2)}`);
+  minY.position.set(bounds.min.x - 6, bounds.min.y, bounds.min.z);
+  const maxY = labelSprite(`${extents.z[1].toFixed(2)}`);
+  maxY.position.set(bounds.min.x - 6, bounds.max.y, bounds.min.z);
+  scene.add(minX, maxX, minY, maxY);
+  if (projection === "3D" && axisNames[2]) {
+    const minZ = labelSprite(`${axisNames[2]} ${extents.y[0].toFixed(2)}`);
+    minZ.position.set(center.x, bounds.min.y - 5, bounds.min.z);
+    const maxZ = labelSprite(`${extents.y[1].toFixed(2)}`);
+    maxZ.position.set(center.x, bounds.min.y - 5, bounds.max.z);
+    scene.add(minZ, maxZ);
+  }
+}
+
 function Section({ title, children, initial = true }: { title: string; children: React.ReactNode; initial?: boolean }) {
   const [open, setOpen] = useState(initial);
   return (
@@ -526,7 +580,7 @@ function TwoDView({ rows, mapping, viz, onSelect, transform }: { rows: Record<st
   return <svg className="vizSvg" ref={ref} />;
 }
 
-function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, showSurface, resetSignal }: { rows: Record<string, unknown>[]; mapping: Mapping; viz: VizId; projection: Projection; onSelect: (row: Record<string, unknown>) => void; transform: TransformState; showSurface: boolean; resetSignal: number }) {
+function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, display, showSurface, resetSignal }: { rows: Record<string, unknown>[]; mapping: Mapping; viz: VizId; projection: Projection; onSelect: (row: Record<string, unknown>) => void; transform: TransformState; display: DisplayState; showSurface: boolean; resetSignal: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!ref.current) return;
@@ -561,14 +615,23 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, showS
     const center = bounds.getCenter(new THREE.Vector3());
     const size = bounds.getSize(new THREE.Vector3());
     const radius = Math.max(36, size.length() * 0.56);
-    const grid = new THREE.GridHelper(radius * 1.9, 18, "#404040", "#181818");
-    grid.position.y = bounds.min.y - 2;
-    scene.add(grid);
-    const boundsFrame = new THREE.Box3Helper(bounds, "#3f3f3f");
-    scene.add(boundsFrame);
+    if (display.showGrid) {
+      const grid = new THREE.GridHelper(radius * 1.9, 18, "#404040", "#181818");
+      grid.position.y = bounds.min.y - 2;
+      scene.add(grid);
+    }
+    if (display.showBounds) {
+      const boundsFrame = new THREE.Box3Helper(bounds, "#3f3f3f");
+      scene.add(boundsFrame);
+    }
+    if (display.showAxisLabels) addAxisLabels(scene, mapping, bounds, ext, projection);
     controls.target.copy(center);
-    if (projection === "3D") camera.position.set(center.x + radius * 1.18, center.y + radius * 0.82, center.z + radius * 1.08);
-    else camera.position.set(center.x, center.y, center.z + radius * 1.9);
+    if (projection === "3D") {
+      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + radius * 2.1);
+      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + radius * 2.1, center.z + 0.01);
+      else if (display.cameraPreset === "side") camera.position.set(center.x + radius * 2.1, center.y, center.z);
+      else camera.position.set(center.x + radius * 1.18, center.y + radius * 0.82, center.z + radius * 1.08);
+    } else camera.position.set(center.x, center.y, center.z + radius * 1.9);
     camera.near = Math.max(0.1, radius / 100);
     camera.far = radius * 12;
     camera.updateProjectionMatrix();
@@ -626,7 +689,7 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, showS
       renderer.dispose();
       controls.dispose();
     };
-  }, [rows, mapping, viz, projection, onSelect, transform, showSurface, resetSignal]);
+  }, [rows, mapping, viz, projection, onSelect, transform, display, showSurface, resetSignal]);
   return <div className="threeHost" ref={ref} />;
 }
 
@@ -640,6 +703,7 @@ function App() {
   const [notice, setNotice] = useState("3D spatial data detected. Projection modes are available because X/Y/Z numeric mappings are present.");
   const [showSurface, setShowSurface] = useState(false);
   const [resetSignal, setResetSignal] = useState(0);
+  const [display, setDisplay] = useState<DisplayState>(defaultDisplay);
   const caps = useMemo(() => detectCapabilities(dataset, mapping), [dataset, mapping]);
   const activeCap = caps.find((c) => c.id === viz);
   const rows = useMemo(() => transformedRows(dataset, mapping, transform), [dataset, mapping, transform]);
@@ -813,6 +877,16 @@ function App() {
           <div className="kv"><span>Geometry</span><b>{vizLabels[viz]}</b></div>
           <div className="kv"><span>Projection</span><b>{projection}</b></div>
           <div className="kv"><span>Representation</span><b>{transform.normalization === "none" ? "Raw" : "Normalized"}</b></div>
+          <label className="checkField"><input type="checkbox" checked={display.showGrid} onChange={(e) => setDisplay({ ...display, showGrid: e.target.checked })} /> Grid</label>
+          <label className="checkField"><input type="checkbox" checked={display.showBounds} onChange={(e) => setDisplay({ ...display, showBounds: e.target.checked })} /> Bounding box</label>
+          <label className="checkField"><input type="checkbox" checked={display.showAxisLabels} onChange={(e) => setDisplay({ ...display, showAxisLabels: e.target.checked })} /> Axis numeric labels</label>
+          <div className="presetGrid" aria-label="3D camera presets">
+            {(["iso", "front", "top", "side"] as CameraPreset[]).map((preset) => (
+              <button key={preset} className={display.cameraPreset === preset ? "on" : ""} onClick={() => { setDisplay({ ...display, cameraPreset: preset }); setProjection("3D"); setResetSignal((n) => n + 1); }}>
+                {preset.toUpperCase()}
+              </button>
+            ))}
+          </div>
         </Section>
         <Section title="Export" initial={false}>
           <button className="toolBtn" onClick={exportPng}><Download size={14} /> PNG</button>
@@ -840,7 +914,7 @@ function App() {
           {!dataset || numericCount === 0 && !hasNetwork(mapping) ? (
             <div className="empty">No valid numeric visualization available. Detected columns: {dataset?.columns.map((c) => `${c.name}: ${c.type}`).join(", ") || "none"}.</div>
           ) : is3d || ["scatter3d", "line3d", "pointcloud", "wireframe", "surface"].includes(viz) ? (
-            <ThreeDView rows={rows} mapping={mapping} viz={viz} projection={projection} onSelect={setSelected} transform={transform} showSurface={showSurface || grid.regular} resetSignal={resetSignal} />
+            <ThreeDView rows={rows} mapping={mapping} viz={viz} projection={projection} onSelect={setSelected} transform={transform} display={display} showSurface={showSurface || grid.regular} resetSignal={resetSignal} />
           ) : (
             <TwoDView rows={rows} mapping={mapping} viz={viz} onSelect={setSelected} transform={transform} />
           )}
@@ -855,7 +929,7 @@ function App() {
           <div><span>Visualization</span><b>{vizLabels[viz]}</b></div>
           <div><span>Mapping</span><b>X={mapping.x || "none"} · Y={mapping.y || "none"} · Z={mapping.z || "none"} · Value={mapping.value || "none"}</b></div>
           <div><span>Transform</span><b>{transform.normalization === "none" ? "Normalization off" : transform.normalization} · smoothing {transform.smoothing} · noise {transform.noise}</b></div>
-          <div><span>Generated geometry</span><b>{rows.length} points · {(viz === "surface" || viz === "wireframe") && (showSurface || grid.regular) ? Math.max(0, (new Set(rows.map((r) => String(valueOf(r, mapping.x)))).size - 1) * (new Set(rows.map((r) => String(valueOf(r, mapping.y)))).size - 1) * 2) : 0} generated surfaces · Interpolation: {grid.irregular && showSurface ? "Delaunay triangulation acknowledged" : "None"}</b></div>
+          <div><span>Generated geometry</span><b>{rows.length} points · {(viz === "surface" || viz === "wireframe") && (showSurface || grid.regular) ? Math.max(0, (new Set(rows.map((r) => String(valueOf(r, mapping.x)))).size - 1) * (new Set(rows.map((r) => String(valueOf(r, mapping.y)))).size - 1) * 2) : 0} generated surfaces · View: {display.cameraPreset.toUpperCase()}</b></div>
         </footer>
       </section>
     </main>

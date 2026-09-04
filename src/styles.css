@@ -197,6 +197,36 @@ button, select, input { font: inherit; }
   color: #8b919b;
 }
 .kv b { color: #d6dae0; font-weight: 500; }
+.checkField {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  color: #c7cbd2;
+  font-size: 10px;
+}
+.checkField input {
+  width: 13px;
+  height: 13px;
+  accent-color: #ffffff;
+}
+.presetGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.presetGrid button {
+  height: 26px;
+  border: 1px solid #303238;
+  background: #0d0e11;
+  color: #c8ccd3;
+  font-size: 10px;
+}
+.presetGrid button.on {
+  background: #ffffff;
+  color: #000000;
+  border-color: #ffffff;
+}
 
 .workspace {
   min-width: 0;
