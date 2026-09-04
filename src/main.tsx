@@ -845,7 +845,7 @@ function App() {
           </div>
           <div className="segmented">
             {(["3D", "XY", "XZ", "YZ"] as Projection[]).map((p) => (
-              <button disabled={!isNumeric(dataset, mapping.x) || !isNumeric(dataset, mapping.y) || !isNumeric(dataset, mapping.z)} className={projection === p ? "on" : ""} onClick={() => setProjection(p)}>{p}</button>
+              <button key={p} disabled={!isNumeric(dataset, mapping.x) || !isNumeric(dataset, mapping.y) || !isNumeric(dataset, mapping.z)} className={projection === p ? "on" : ""} onClick={() => setProjection(p)}>{p}</button>
             ))}
           </div>
           {projection !== "3D" && <p className="hint">{projection} Projection. {projection === "XY" ? "Z" : projection === "XZ" ? "Y" : "X"} axis is omitted. Original values are preserved.</p>}
