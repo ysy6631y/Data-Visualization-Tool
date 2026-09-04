@@ -2,12 +2,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc && vite build && node scripts/create-sites-worker.mjs",
+    "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "smoke:test-data": "node scripts/smoke-test-data.mjs"
   },
   "dependencies": {
-    "@openai/sites-vite-plugin": "^0.2.0",
     "@vitejs/plugin-react": "latest",
     "d3": "latest",
     "lucide-react": "latest",
