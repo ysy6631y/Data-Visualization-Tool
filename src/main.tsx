@@ -538,6 +538,8 @@ function TwoDView({ rows, mapping, viz, onSelect, transform }: { rows: Record<st
     const width = ref.current?.clientWidth || 800;
     const height = ref.current?.clientHeight || 560;
     const pad = 42;
+    svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`).attr("xmlns", "http://www.w3.org/2000/svg");
+    svg.append("rect").attr("width", width).attr("height", height).attr("fill", "#000000");
     const root = svg.append("g").attr("class", "plotRoot");
     svg.call(d3.zoom<SVGSVGElement, unknown>().scaleExtent([0.5, 18]).on("zoom", (event) => root.attr("transform", event.transform.toString())));
     if (viz === "network2d") {
@@ -769,31 +771,43 @@ function App() {
   const exportCsv = () => {
     downloadBlob(new Blob([Papa.unparse(rows)], { type: "text/csv" }), "transformed-values.csv");
   };
+  const serializeCurrentSvg = () => {
+    const svg = document.querySelector(".canvas .vizSvg") as SVGSVGElement | null;
+    if (!svg) return null;
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    const width = svg.clientWidth || Number(svg.getAttribute("width")) || 1200;
+    const height = svg.clientHeight || Number(svg.getAttribute("height")) || 800;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("width", String(width));
+    clone.setAttribute("height", String(height));
+    clone.setAttribute("viewBox", clone.getAttribute("viewBox") || `0 0 ${width} ${height}`);
+    return { data: new XMLSerializer().serializeToString(clone), width, height };
+  };
   const exportPng = () => {
-    const canvas = document.querySelector("canvas");
+    const canvas = document.querySelector(".canvas .threeHost canvas") as HTMLCanvasElement | null;
     if (canvas) canvas.toBlob((blob) => blob && downloadBlob(blob, "visualization.png"));
     else {
-      const svg = document.querySelector(".vizSvg") as SVGSVGElement | null;
+      const svg = serializeCurrentSvg();
       if (!svg) return;
-      const data = new XMLSerializer().serializeToString(svg);
       const image = new Image();
       image.onload = () => {
         const c = document.createElement("canvas");
-        c.width = svg.clientWidth;
-        c.height = svg.clientHeight;
+        c.width = svg.width;
+        c.height = svg.height;
         const ctx = c.getContext("2d");
         if (!ctx) return;
-        ctx.fillStyle = "#0a0b0d";
+        ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, c.width, c.height);
         ctx.drawImage(image, 0, 0);
         c.toBlob((blob) => blob && downloadBlob(blob, "visualization.png"));
+        URL.revokeObjectURL(image.src);
       };
-      image.src = `data:image/svg+xml;base64,${btoa(data)}`;
+      image.src = URL.createObjectURL(new Blob([svg.data], { type: "image/svg+xml;charset=utf-8" }));
     }
   };
   const exportSvg = () => {
-    const svg = document.querySelector(".vizSvg") as SVGSVGElement | null;
-    if (svg) downloadBlob(new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" }), "visualization.svg");
+    const svg = serializeCurrentSvg();
+    if (svg) downloadBlob(new Blob([svg.data], { type: "image/svg+xml;charset=utf-8" }), "visualization.svg");
     else setNotice("SVG export is available only for 2D visualizations.");
   };
 
