@@ -627,10 +627,14 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     if (display.showAxisLabels) addAxisLabels(scene, mapping, bounds, ext, projection);
     controls.target.copy(center);
     if (projection === "3D") {
-      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + radius * 2.1);
-      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + radius * 2.1, center.z + 0.01);
-      else if (display.cameraPreset === "side") camera.position.set(center.x + radius * 2.1, center.y, center.z);
-      else camera.position.set(center.x + radius * 1.18, center.y + radius * 0.82, center.z + radius * 1.08);
+      const viewDistance = radius * 1.8;
+      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + viewDistance);
+      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + viewDistance, center.z + 0.01);
+      else if (display.cameraPreset === "side") camera.position.set(center.x + viewDistance, center.y, center.z);
+      else {
+        const isoDirection = new THREE.Vector3(1.18, 0.82, 1.08).normalize().multiplyScalar(viewDistance);
+        camera.position.set(center.x + isoDirection.x, center.y + isoDirection.y, center.z + isoDirection.z);
+      }
     } else camera.position.set(center.x, center.y, center.z + radius * 1.9);
     camera.near = Math.max(0.1, radius / 100);
     camera.far = radius * 12;
