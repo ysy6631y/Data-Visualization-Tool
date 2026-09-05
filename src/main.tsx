@@ -109,6 +109,10 @@ const defaultDisplay: DisplayState = {
   cameraPreset: "iso",
 };
 
+const PROJECTION_FIT_SIZE = 92;
+const PERSPECTIVE_FIT_DISTANCE = 3;
+const ISO_CAMERA_DIRECTION = new THREE.Vector3(1.18, 0.82, 1.08).normalize();
+
 const vizLabels: Record<VizId, string> = {
   line: "Line chart",
   scatter2d: "Scatter plot",
@@ -590,8 +594,7 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     const height = host.clientHeight || 620;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#000000");
-    const fitSize = 92;
-    const camera = projection === "3D" ? new THREE.PerspectiveCamera(42, width / height, 0.1, 2000) : new THREE.OrthographicCamera(-fitSize, fitSize, fitSize / (width / height), -fitSize / (width / height), 0.1, 2000);
+    const camera = projection === "3D" ? new THREE.PerspectiveCamera(42, width / height, 0.1, 2000) : new THREE.OrthographicCamera(-PROJECTION_FIT_SIZE, PROJECTION_FIT_SIZE, PROJECTION_FIT_SIZE / (width / height), -PROJECTION_FIT_SIZE / (width / height), 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -628,14 +631,19 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     if (display.showAxisLabels) addAxisLabels(scene, mapping, bounds, ext, projection);
     controls.target.copy(center);
     if (projection === "3D") {
-      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + radius * 2.1);
-      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + radius * 2.1, center.z + 0.01);
-      else if (display.cameraPreset === "side") camera.position.set(center.x + radius * 2.1, center.y, center.z);
-      else camera.position.set(center.x + radius * 1.18, center.y + radius * 0.82, center.z + radius * 1.08);
+      const fitDistance = radius * PERSPECTIVE_FIT_DISTANCE;
+      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + fitDistance);
+      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + fitDistance, center.z + 0.01);
+      else if (display.cameraPreset === "side") camera.position.set(center.x + fitDistance, center.y, center.z);
+      else {
+        const isoDirection = ISO_CAMERA_DIRECTION.clone().multiplyScalar(fitDistance);
+        camera.position.set(center.x + isoDirection.x, center.y + isoDirection.y, center.z + isoDirection.z);
+      }
     } else camera.position.set(center.x, center.y, center.z + radius * 1.9);
     camera.near = Math.max(0.1, radius / 100);
     camera.far = radius * 12;
     camera.updateProjectionMatrix();
+    controls.update();
     const positions = new Float32Array(vectors.flatMap((v) => [v.x, v.y, v.z]));
     const pointGeometry = new THREE.BufferGeometry();
     pointGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
