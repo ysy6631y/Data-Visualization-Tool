@@ -580,41 +580,6 @@ function TwoDView({ rows, mapping, viz, onSelect, transform }: { rows: Record<st
   return <svg className="vizSvg" ref={ref} />;
 }
 
-function frameOrthographicCamera(camera: THREE.OrthographicCamera, bounds: THREE.Box3, aspect: number) {
-  const corners = [
-    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
-    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
-    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
-    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
-    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
-    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
-    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
-    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
-  ];
-  const inverseView = camera.matrixWorldInverse;
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  corners.forEach((corner) => {
-    const viewPoint = corner.clone().applyMatrix4(inverseView);
-    minX = Math.min(minX, viewPoint.x);
-    maxX = Math.max(maxX, viewPoint.x);
-    minY = Math.min(minY, viewPoint.y);
-    maxY = Math.max(maxY, viewPoint.y);
-  });
-  const margin = 1.16;
-  const framedWidth = Math.max(1, maxX - minX) * margin;
-  const framedHeight = Math.max(1, maxY - minY) * margin;
-  const verticalSize = Math.max(framedHeight, framedWidth / aspect);
-  const horizontalSize = verticalSize * aspect;
-  camera.left = -horizontalSize / 2;
-  camera.right = horizontalSize / 2;
-  camera.top = verticalSize / 2;
-  camera.bottom = -verticalSize / 2;
-  camera.updateProjectionMatrix();
-}
-
 function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, display, showSurface, resetSignal }: { rows: Record<string, unknown>[]; mapping: Mapping; viz: VizId; projection: Projection; onSelect: (row: Record<string, unknown>) => void; transform: TransformState; display: DisplayState; showSurface: boolean; resetSignal: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -625,8 +590,8 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     const height = host.clientHeight || 620;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#000000");
-    const aspect = width / height;
-    const camera = new THREE.OrthographicCamera(-62, 62, 62 / aspect, -62 / aspect, 0.1, 2000);
+    const fitSize = 92;
+    const camera = projection === "3D" ? new THREE.PerspectiveCamera(42, width / height, 0.1, 2000) : new THREE.OrthographicCamera(-fitSize, fitSize, fitSize / (width / height), -fitSize / (width / height), 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -663,20 +628,14 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     if (display.showAxisLabels) addAxisLabels(scene, mapping, bounds, ext, projection);
     controls.target.copy(center);
     if (projection === "3D") {
-      const viewDistance = radius * 1.8;
-      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + viewDistance);
-      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + viewDistance, center.z + 0.01);
-      else if (display.cameraPreset === "side") camera.position.set(center.x + viewDistance, center.y, center.z);
-      else {
-        const isoDirection = new THREE.Vector3(1.18, 0.82, 1.08).normalize().multiplyScalar(viewDistance);
-        camera.position.set(center.x + isoDirection.x, center.y + isoDirection.y, center.z + isoDirection.z);
-      }
+      if (display.cameraPreset === "front") camera.position.set(center.x, center.y, center.z + radius * 2.1);
+      else if (display.cameraPreset === "top") camera.position.set(center.x, center.y + radius * 2.1, center.z + 0.01);
+      else if (display.cameraPreset === "side") camera.position.set(center.x + radius * 2.1, center.y, center.z);
+      else camera.position.set(center.x + radius * 1.18, center.y + radius * 0.82, center.z + radius * 1.08);
     } else camera.position.set(center.x, center.y, center.z + radius * 1.9);
     camera.near = Math.max(0.1, radius / 100);
     camera.far = radius * 12;
-    camera.lookAt(center);
-    camera.updateMatrixWorld();
-    frameOrthographicCamera(camera, bounds, aspect);
+    camera.updateProjectionMatrix();
     const positions = new Float32Array(vectors.flatMap((v) => [v.x, v.y, v.z]));
     const pointGeometry = new THREE.BufferGeometry();
     pointGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
