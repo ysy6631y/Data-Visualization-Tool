@@ -580,6 +580,41 @@ function TwoDView({ rows, mapping, viz, onSelect, transform }: { rows: Record<st
   return <svg className="vizSvg" ref={ref} />;
 }
 
+function frameOrthographicCamera(camera: THREE.OrthographicCamera, bounds: THREE.Box3, aspect: number) {
+  const corners = [
+    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.min.z),
+    new THREE.Vector3(bounds.min.x, bounds.min.y, bounds.max.z),
+    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.min.z),
+    new THREE.Vector3(bounds.min.x, bounds.max.y, bounds.max.z),
+    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.min.z),
+    new THREE.Vector3(bounds.max.x, bounds.min.y, bounds.max.z),
+    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.min.z),
+    new THREE.Vector3(bounds.max.x, bounds.max.y, bounds.max.z),
+  ];
+  const inverseView = camera.matrixWorldInverse;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  corners.forEach((corner) => {
+    const viewPoint = corner.clone().applyMatrix4(inverseView);
+    minX = Math.min(minX, viewPoint.x);
+    maxX = Math.max(maxX, viewPoint.x);
+    minY = Math.min(minY, viewPoint.y);
+    maxY = Math.max(maxY, viewPoint.y);
+  });
+  const margin = 1.16;
+  const framedWidth = Math.max(1, maxX - minX) * margin;
+  const framedHeight = Math.max(1, maxY - minY) * margin;
+  const verticalSize = Math.max(framedHeight, framedWidth / aspect);
+  const horizontalSize = verticalSize * aspect;
+  camera.left = -horizontalSize / 2;
+  camera.right = horizontalSize / 2;
+  camera.top = verticalSize / 2;
+  camera.bottom = -verticalSize / 2;
+  camera.updateProjectionMatrix();
+}
+
 function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, display, showSurface, resetSignal }: { rows: Record<string, unknown>[]; mapping: Mapping; viz: VizId; projection: Projection; onSelect: (row: Record<string, unknown>) => void; transform: TransformState; display: DisplayState; showSurface: boolean; resetSignal: number }) {
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -590,7 +625,8 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     const height = host.clientHeight || 620;
     const scene = new THREE.Scene();
     scene.background = new THREE.Color("#000000");
-    const camera = projection === "3D" ? new THREE.PerspectiveCamera(42, width / height, 0.1, 2000) : new THREE.OrthographicCamera(-62, 62, 62 / (width / height), -62 / (width / height), 0.1, 2000);
+    const aspect = width / height;
+    const camera = new THREE.OrthographicCamera(-62, 62, 62 / aspect, -62 / aspect, 0.1, 2000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -638,7 +674,9 @@ function ThreeDView({ rows, mapping, viz, projection, onSelect, transform, displ
     } else camera.position.set(center.x, center.y, center.z + radius * 1.9);
     camera.near = Math.max(0.1, radius / 100);
     camera.far = radius * 12;
-    camera.updateProjectionMatrix();
+    camera.lookAt(center);
+    camera.updateMatrixWorld();
+    frameOrthographicCamera(camera, bounds, aspect);
     const positions = new Float32Array(vectors.flatMap((v) => [v.x, v.y, v.z]));
     const pointGeometry = new THREE.BufferGeometry();
     pointGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
